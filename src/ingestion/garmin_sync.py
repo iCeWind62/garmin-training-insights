@@ -27,7 +27,6 @@ if sys.stdout.encoding != 'utf-8':
     sys.stderr.reconfigure(encoding='utf-8')
 
 try:
-    import garth
     from garminconnect import Garmin
     from dotenv import load_dotenv
 except ImportError as e:
@@ -62,50 +61,23 @@ class GarminSync:
 
         self.garmin: Optional[Garmin] = None
 
-    def connect(self) -> bool:
-        """Pripoji se k Garmin Connect. Pouzije ulozene tokeny nebo 2FA login."""
+    def connect(self, max_retries: int = 3) -> bool:
+        """Pripoji se k Garmin Connect (garminconnect nativni login).
 
-        # 1. Zkus obnovit session z ulozenych tokenu
-        if self._try_resume_session():
-            return True
-
-        # 2. Novy login (muze vyzadovat MFA kod)
-        return self._fresh_login()
-
-    def _try_resume_session(self) -> bool:
-        """Zkusi obnovit session z garth tokenu."""
-        token_file = self.tokens_dir / "oauth1_token.json"
-        if not token_file.exists():
-            return False
-
-        try:
-            print("Obnovuji predchozi session...")
-            self.garmin = Garmin(self.garmin_email, self.garmin_password)
-            self.garmin.login(tokenstore=str(self.tokens_dir))
-
-            profile = self.garmin.get_full_name()
-            print(f"Session obnoven pro: {profile}")
-            return True
-
-        except Exception as e:
-            print(f"Session expiroval ({e}), bude potreba novy login.")
-            return False
-
-    def _fresh_login(self, max_retries: int = 3) -> bool:
-        """Novy login s 2FA supportem a retry pri 429."""
-        print("Prihlasuji se k Garmin Connect...")
-        print(f"Email: {self.garmin_email}")
+        Pouzije ulozene tokeny z tokens_dir; pokud chybi/expirovaly,
+        udela novy login (muze vyzadovat MFA kod) a tokeny ulozi.
+        """
+        print(f"Prihlasuji se k Garmin Connect ({self.garmin_email})...")
 
         for attempt in range(1, max_retries + 1):
             try:
-                garth.login(self.garmin_email, self.garmin_password, prompt_mfa=self._prompt_mfa)
-                garth.save(str(self.tokens_dir))
-
-                self.garmin = Garmin(self.garmin_email, self.garmin_password)
+                self.garmin = Garmin(
+                    self.garmin_email, self.garmin_password,
+                    prompt_mfa=self._prompt_mfa,
+                )
                 self.garmin.login(tokenstore=str(self.tokens_dir))
 
-                profile = self.garmin.get_full_name()
-                print(f"Uspesne prihlasen jako: {profile}")
+                print(f"Uspesne prihlasen jako: {self.garmin.get_full_name()}")
                 print(f"Tokeny ulozeny do {self.tokens_dir} (priste bez 2FA)")
                 return True
 
